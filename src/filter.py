@@ -1,12 +1,12 @@
 from bs4 import BeautifulSoup
 import re
 import myhtml
+import sql
 from web import ChromeDriver
 import logging
 
 logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
 chrome: ChromeDriver = ChromeDriver()
-
 
 
 def get_matches(soup):
@@ -16,9 +16,6 @@ def get_matches(soup):
     :param soup: 解析器对象
     :return: 比赛信息列表
     """
-	matches_url = "https://www.okooo.cn/danchang/"
-	html = chrome.get_html(matches_url)
-	soup = BeautifulSoup(html, 'html.parser')
 
 	# 自定义过滤器，检查id属性是否以'table'开头
 	def table_id_filter(tag):
@@ -47,21 +44,31 @@ def get_matches(soup):
 			# 获取比赛信息
 			league_name = tr.find('a', { 'class': 'ls' }).text
 			match_time = tr.find('td', { 'class': 'switchtime' }).attrs['title']
-			match_time_filtered = re.sub(r'比赛时间：', '', match_time)
+			match_time = re.sub(r'比赛时间：', '', match_time)
+			match_date, match_time = match_time.split(" ")
 			home_team = tr.find('span', { 'class': 'homenameobj' }).text
 			away_team = tr.find('span', { 'class': 'awaynameobj' }).text
 			match_id = tr.attrs['matchid']
+			td6 = tr.find('td', class_ = 'tdfx td6')  # 找到含有比分的 td 元素
+			if td6:
+				score = td6.text.strip()  # 获取比分文本并去除空格和换行符
+				home_score, away_score = score.split('-')
+			else:
+				home_score = away_score = None
 
 			# 将比赛信息添加到列表中
 			matches.append({
 				'league_name': league_name,
-				'match_time' : match_time_filtered,
+				'match_date' : match_date,
+				'match_time' : match_time,
 				'home_team'  : home_team,
+				'home_score' : home_score,
 				'away_team'  : away_team,
-				'match_id'   : match_id
+				'away_score' : away_score,
+				'match_id'   : int(match_id)
 			})
-
 	return matches
+
 
 def get_match_info(match_id: str):
 	match_url = f"https://www.okooo.cn/soccer/match/{match_id}/history/"
@@ -69,20 +76,23 @@ def get_match_info(match_id: str):
 	soup = BeautifulSoup(html, 'html.parser')
 
 	navibox = soup.find_all('div', { 'class': 'matchnavboxbg' })
-
-
+	pass
 
 if __name__ == "__main__":
-	matches_url = "https://www.okooo.cn/danchang/"
+	matches_url = "https://www.okooo.cn/danchang/23045"
 	chrome: ChromeDriver = ChromeDriver()
-	html = chrome.get_html(url)
+	html = chrome.get_html(matches_url)
 	soup = BeautifulSoup(html, 'html.parser')
 	matches = get_matches(soup)
 
+	sql.insert_matches(matches)
 	# 打印比赛信息
 	for match in matches:
 		logging.info(f"联赛名称：{match['league_name']}")
-		logging.info(f"比赛时间：{match['match_time']}")
+		logging.info(f"比赛时间：{match['match_date'] + ' ' + match['match_time']}")
 		logging.info(f"主队：{match['home_team']}")
 		logging.info(f"客队：{match['away_team']}")
+		logging.info(f"比分：{match['home_score'] + '-' + match['away_score']}")
 		logging.info(f"比赛 ID：{match['match_id']}")
+
+	chrome.close()

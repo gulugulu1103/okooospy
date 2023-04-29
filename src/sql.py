@@ -1,15 +1,14 @@
 import sqlite_utils
+from sqlite_utils import db
 
-# 连接到SQLite数据库
-db = sqlite_utils.Database("../example.db")
 
-# 创建一个表
-db["stocks"].create({"date": str, "trans": str, "symbol": str, "qty": float, "price": float})
+def insert_matches(match: list):
+	db = sqlite_utils.Database("../data.db")
+	db["matches"].insert_all(match, pk="match_id", replace = True)
 
-# 插入一些数据
-db["stocks"].insert_all([{"date": "2023-04-29", "trans": "BUY", "symbol": "AAPL", "qty": 100, "price": 200}])
 
-# 查询数据
-rows = db["stocks"].rows
-for row in rows:
-    print(row)
+if __name__ == "__main__":
+	# 查询数据
+	rows = db["matches"].rows
+	for row in rows:
+		print(row)
