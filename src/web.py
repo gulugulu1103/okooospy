@@ -6,6 +6,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
+import sql
+
 logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
 
 
@@ -46,6 +48,9 @@ class ChromeDriver:
 		options = webdriver.ChromeOptions()
 		# options.add_argument('--headless')
 		options.binary_location = "../browser/chrome-win/chrome.exe"
+		# 无图模式，使用后兼容性出错
+		# prefs = { 'profile.managed_default_content_settings.images': 2 }
+		# options.add_experimental_option('prefs', prefs)
 		self.driver = webdriver.Chrome(service = service, options = options)
 
 	# if cookies is not None:
@@ -110,29 +115,28 @@ class ChromeDriver:
 		# logging.debug("[ChromeDriver] : Got the whole HTML: %s", html)
 		return html
 
-	def get_match_odds(self, provider_ids: list = [27],
-	                   match_ids: list = [1206413, 1206406, 1207296, 1206393, 1206387, 1207286, 1206380, 1207280,
-	                                      1206369, 1206354, 1207267], end: bool = True) -> json:
-		"""
-		获取比赛赔率信息。
-		Args:
-		    provider_ids (list): 提供者 ID 列表。
-		    match_ids (list): 比赛 ID 列表。
-		    end (bool): 是否为结束赔率。
-		Returns:
-		    json: 包含比赛赔率信息的 JSON 对象。
-		"""
-		url = "https://www.okooo.cn/ajax/?method=data.match.endodds" \
-			if end else "https://www.okooo.cn/ajax/?method=data.match.odds"
-		url += f"&bettingTypeId=1"  # 1 赔率 | 2 亚盘
-		url += "&matchIds="
-		for id in match_ids:
-			url += f"{id},"
-		url.rstrip(',')
-		for id in provider_ids:
-			temp_url = url + f"&providerId={id}"
-			print(temp_url)
-			print(self.get_html(temp_url))
+	# def get_match_odds(self, provider_ids: list = [27],
+	#                    match_ids: list = [1206413, 1206406], end: bool = True) -> json:
+	# 	"""
+	# 	获取比赛赔率信息。
+	# 	Args:
+	# 	    provider_ids (list): 提供者 ID 列表。
+	# 	    match_ids (list): 比赛 ID 列表。
+	# 	    end (bool): 是否为结束赔率。
+	# 	Returns:
+	# 	    json: 包含比赛赔率信息的 JSON 对象。
+	# 	"""
+	# 	url = "https://www.okooo.cn/ajax/?method=data.match.endodds" \
+	# 		if end else "https://www.okooo.cn/ajax/?method=data.match.odds"
+	# 	url += f"&bettingTypeId=1"  # 1 赔率 | 2 亚盘
+	# 	url += "&matchIds="
+	# 	for id in match_ids:
+	# 		url += f"{id},"
+	# 	url.rstrip(',')
+	# 	for id in provider_ids:
+	# 		temp_url = url + f"&providerId={id}"
+	# 		print(temp_url)
+	# 		print(self.get_html(temp_url))
 
 	def close(self) -> None:
 		"""
@@ -147,9 +151,62 @@ class ChromeDriver:
 		self.close()
 
 
-def re_get_match_odds(provider_ids=None, match_ids: list = None, end: bool = True) -> dict | None:
+def re_get_match_odds(match_ids: list, provider_ids=None, end: bool = True) -> list | None:
+	# 如果没有提供 provider_ids，则使用默认值
+	if provider_ids is None:
+		provider_ids = [14, 27, 24, 82, 84]
+
+	# 根据 end 参数选择 URL
+	url = "https://www.okooo.cn/ajax/?method=data.match.endodds" \
+		if end else "https://www.okooo.cn/ajax/?method=data.match.odds"
+
+	# 读取 cookies
+	cookies = read_cookies()
+	# 使用列表推导式生成 cookie_str
+	cookie_str = "; ".join([f"{cookie['name']}={cookie['value']}" for cookie in cookies])
+
+	# 准备请求参数
+	payload = {
+		'bettingTypeId'                   : 1,
+		'providerId'                      : provider_ids,
+		('matchId' if end else 'matchIds'): ",".join(map(str, match_ids))  # 以逗号分隔的 match_ids 字符串
+	}
+	headers = {
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+		              'Chrome/58.0.3029.110 Safari/537.36',
+		'Cookie'    : cookie_str,
+	}
+
+	responses = []
+
+	# 遍历所有 provider_ids
+	for provider_id in provider_ids:
+		payload['providerId'] = provider_id
+		response = post(url, headers = headers, data = payload)
+
+		# 如果返回状态码为 405，则等待后重试
+		while response.status_code == 405:
+			sleep(1)
+			response = post(url, headers = headers, data = payload)
+
+		# 如果请求成功
+		if response.status_code == 200:
+			json = { 'providerId': provider_id }
+			# 根据 end 参数获取赔率数据
+			odds_data = response.json()["match_endodds_response"] if end else response.json()
+			json.update(odds_data)  # 更新 json 对象
+			responses.append(json)
+			sleep(0.2)
+		else:
+			logging.error(f"response status code: {response.status_code}\ntext: {response.text}")
+			continue
+
+	return responses
+
+
+def re_get_asian_handicaps(match_ids: list, provider_ids=None, end: bool = True) -> dict | None:
 	"""
-	使用 requests 调整胜率。
+	使用 requests 查看亚盘赔率
 	Args:
 	    provider_ids (list, optional): 提供者 ID 列表。
 	    match_ids (list, optional): 比赛 ID 列表。
@@ -159,16 +216,13 @@ def re_get_match_odds(provider_ids=None, match_ids: list = None, end: bool = Tru
 	"""
 
 	if provider_ids is None:
-		provider_ids = [14, 27, 24]
-
-	# 添加默认值以供测试
-	if match_ids is None:
-		match_ids = [1206413, 1206406, 1207296, 1206393]
+		provider_ids = [34]
 
 	# 准备访问
 	url = "https://www.okooo.cn/ajax/?method=data.match.endodds" \
 		if end else "https://www.okooo.cn/ajax/?method=data.match.odds"
 
+	# TODO: 万一没有cookies该怎么办？
 	cookies = read_cookies()
 	cookie_str = ""
 	for cookie in cookies:
@@ -178,7 +232,7 @@ def re_get_match_odds(provider_ids=None, match_ids: list = None, end: bool = Tru
 	cookie_str = cookie_str[:-2]
 
 	payload = {
-		'bettingTypeId': 1,
+		'bettingTypeId': 2,
 		'providerId'   : provider_ids,
 		'matchIds'     : str(match_ids).strip('[').strip(']')
 	}
@@ -209,7 +263,8 @@ def re_get_match_odds(provider_ids=None, match_ids: list = None, end: bool = Tru
 
 
 if __name__ == "__main__":
-	# chrome = ChromeDriver()
-	# print(chrome.get_match_odds())
+	chrome = ChromeDriver()
+# print(chrome.get_html())
+# print(chrome.get_match_odds())
 
-	print(re_get_match_odds(end = False))
+# sql.save_initial_odds(re_get_match_odds(match_ids = [1179372], end = False))

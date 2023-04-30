@@ -78,14 +78,16 @@ def get_match_info(match_id: str):
 	navibox = soup.find_all('div', { 'class': 'matchnavboxbg' })
 	pass
 
+
+
 if __name__ == "__main__":
-	matches_url = "https://www.okooo.cn/danchang/23045"
+	matches_url = "https://www.okooo.cn/danchang/"
 	chrome: ChromeDriver = ChromeDriver()
 	html = chrome.get_html(matches_url)
 	soup = BeautifulSoup(html, 'html.parser')
 	matches = get_matches(soup)
 
-	sql.insert_matches(matches)
+	sql.save_matches(matches)
 	# 打印比赛信息
 	for match in matches:
 		logging.info(f"联赛名称：{match['league_name']}")
