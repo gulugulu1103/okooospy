@@ -154,7 +154,7 @@ class ChromeDriver:
 def re_get_match_odds(match_ids: list, provider_ids=None, end: bool = True) -> list | None:
 	# 如果没有提供 provider_ids，则使用默认值
 	if provider_ids is None:
-		provider_ids = [14, 27, 24, 82, 84]
+		provider_ids = [24, 14, 27, 25, 18, 43, 2, 131, 84, 220, 322]
 
 	# 根据 end 参数选择 URL
 	url = "https://www.okooo.cn/ajax/?method=data.match.endodds" \
@@ -185,9 +185,13 @@ def re_get_match_odds(match_ids: list, provider_ids=None, end: bool = True) -> l
 		response = post(url, headers = headers, data = payload)
 
 		# 如果返回状态码为 405，则等待后重试
+		i = 1
 		while response.status_code == 405:
-			sleep(1)
+			sleep(1 * i)
 			response = post(url, headers = headers, data = payload)
+			i += 1
+			if i == 10:
+				raise Exception('Unexpected response')
 
 		# 如果请求成功
 		if response.status_code == 200:
@@ -247,9 +251,13 @@ def re_get_asian_handicaps(match_ids: list, provider_ids=None, end: bool = True)
 		json = { }
 		payload['providerId'] = provider_id
 		response = post(url, headers = headers, data = payload)
+		i = 1
 		while response.status_code == 405:
-			sleep(1)
+			sleep(i)
 			response = post(url, headers = headers, data = payload)
+			i += 1
+			if i == 10:
+				raise Exception('Unexpected response')
 		if response.status_code == 200:
 			json['providerId'] = provider_id
 			json.update(response.json())
