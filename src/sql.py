@@ -4,6 +4,12 @@ import sqlite_utils
 from sqlite_utils import db
 
 
+def clear_matches():
+	db = sqlite_utils.Database("../data.db")
+	db.execute("DELETE FROM matches")
+	db.close()
+
+
 def save_matches(match: list):
 	db = sqlite_utils.Database("../data.db")
 	db["matches"].insert_all(match, pk = "match_id", replace = True)
@@ -48,12 +54,12 @@ def save_odds(data):
 				continue
 			win_odds, draw_odds, lose_odds = map(str, odds)
 			db['odds'].insert({
-				'match_id'   : match_id,
-				'provider_id': provider_id,
-				'time'       : datetime.now(),  # 添加当前时间作为时间戳
-				'final_win_odds'   : win_odds,
-				'final_draw_odds'  : draw_odds,
-				'final_lose_odds'  : lose_odds
+				'match_id'       : match_id,
+				'provider_id'    : provider_id,
+				'time'           : datetime.now(),  # 添加当前时间作为时间戳
+				'final_win_odds' : win_odds,
+				'final_draw_odds': draw_odds,
+				'final_lose_odds': lose_odds
 			}, pk = ('match_id', 'provider_id'))
 	db.close()
 

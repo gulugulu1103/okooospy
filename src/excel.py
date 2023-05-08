@@ -1,6 +1,10 @@
 import os
-from openpyxl import Workbook, load_workbook
+from openpyxl import *
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+import filter
+import test
+from classes import *
 
 
 def set_header_style(cell):
@@ -54,7 +58,7 @@ def write_match_list(data: list):
 	workbook.close()
 
 
-def get_selected_ids(workbook_path = "output.xlsx", sheet_name="场次列表"):
+def get_selected_ids(workbook_path="output.xlsx", sheet_name="场次列表"):
 	# 加载工作簿和工作表
 	wb = load_workbook(workbook_path, data_only = True)
 	match_list_worksheet = wb[sheet_name]
@@ -70,3 +74,94 @@ def get_selected_ids(workbook_path = "output.xlsx", sheet_name="场次列表"):
 			selected_ids.append(match_id)
 
 	return selected_ids
+
+
+def read_templates() -> workbook.Workbook:
+	# 读取Excel文件
+	workbook = load_workbook('templates.xlsx')
+
+	# 选择首个Sheet
+	worksheet = workbook.active
+
+	# 寻找非空白单元格的最大行和列
+	max_row = worksheet.max_row
+	max_column = worksheet.max_column
+
+	print(max_row, max_column)
+
+
+def generate_fullfilled_workbook(match: SoccerMatch):
+	# 读取Excel文件
+	workbook = load_workbook('templates.xlsx')
+
+	# 选择首个Sheet
+	worksheet = workbook.active
+
+	# 寻找非空白单元格的最大行和列
+	max_row = worksheet.max_row
+	max_column = worksheet.max_column
+
+	# 比赛基本信息
+	worksheet.cell(row = 1, column = 1, value = f"{match.league} {match.match_time.split()[-1]}")
+	worksheet.cell(row = 1, column = 2, value = match.home_team)
+	worksheet.cell(row = 1, column = 6, value = match.away_team)
+
+	# 比赛初始赔率
+	for i, list in zip(range(2, 13), match.odds.values()):
+		# 判断initial值中是否存在match.odds中
+		if 'initial' in list:
+			for j, value in zip(range(2, 5), list['initial']):
+				worksheet.cell(row = i, column = j, value = value)
+	# 比赛即时赔率
+	for i, list in zip(range(2, 13), match.odds.values()):
+		# 判断initial值中是否存在match.odds中
+		if 'current' in list:
+			for j, value in zip(range(6, 9), list['current']):
+				worksheet.cell(row = i, column = j, value = value)
+	# 比赛即时凯利指数
+	for i, list in zip(range(2, 13), match.odds.values()):
+		# 判断initial值中是否存在match.odds中
+		if 'current_kelly' in list:
+			for j, value in zip(range(14, 17), list['current_kelly']):
+				worksheet.cell(row = i, column = j, value = value)
+
+	# 比赛初始亚盘
+	for i, list in zip(range(2, 5), match.asian_handicaps.values()):
+		# 判断initial值中是否存在match.odds中
+		if 'initial' in list:
+			for j, value in zip(range(23, 26), list['initial']):
+				worksheet.cell(row = i, column = j, value = value)
+	# 比赛即时亚盘
+	for i, list in zip(range(5, 8), match.asian_handicaps.values()):
+		# 判断initial值中是否存在match.odds中
+		if 'current' in list:
+			for j, value in zip(range(23, 26), list['current']):
+				worksheet.cell(row = i, column = j, value = value)
+
+	# 比赛让球值
+	worksheet.cell(row = 1, column = 27, value = match.handicap)
+	# 比赛各个平台让球值
+	for i, list in zip(range(2, 5), match.handicap_odds.values()):
+		# 判断initial值中是否存在match.odds中
+		if 'initial' in list:
+			for j, value in zip(range(28, 31), list['initial']):
+				worksheet.cell(row = i, column = j, value = value)
+
+	# 比赛盈亏值
+	for i, list in zip(range(9, 11), match.profit_loss.values()):
+		# 判断initial值中是否存在match.odds中
+		if 'initial' in list:
+			for j, value in zip(range(28, 31), list['initial']):
+				worksheet.cell(row = i, column = j, value = value)
+
+	# 比赛历史
+	for i, str in zip(range(2, 11, 2), match.match_history.values()):
+		worksheet.cell(row = i, column = 32, value = str)
+
+	# 保存操作
+	workbook.save(filename = "output.xlsx")
+
+
+if __name__ == "__main__":
+	generate_fullfilled_workbook(test.read_sample_match())
+	os.startfile("output.xlsx")

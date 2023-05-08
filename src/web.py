@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from time import sleep, time
 from requests import request, post
 from selenium import webdriver
@@ -8,7 +9,7 @@ from selenium.webdriver.chrome.service import Service
 
 import sql
 
-logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
+# logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
 
 
 def read_cookies() -> list | None:
@@ -23,10 +24,6 @@ def read_cookies() -> list | None:
 			return cookie
 	except (FileNotFoundError, json.JSONDecodeError, KeyError):
 		return None
-
-
-cookies = read_cookies()
-
 
 class ChromeDriver:
 	"""
@@ -49,8 +46,8 @@ class ChromeDriver:
 		# options.add_argument('--headless')
 		options.binary_location = "../browser/chrome-win/chrome.exe"
 		# 无图模式，使用后兼容性出错
-		# prefs = { 'profile.managed_default_content_settings.images': 2 }
-		# options.add_experimental_option('prefs', prefs)
+		prefs = { 'profile.managed_default_content_settings.images': 2 }
+		options.add_experimental_option('prefs', prefs)
 		self.driver = webdriver.Chrome(service = service, options = options)
 
 	# if cookies is not None:
@@ -76,21 +73,21 @@ class ChromeDriver:
 		Returns:
 		    str: 网页的 HTML 源代码。
 		"""
-
-		sleep(1)
 		# 访问URL
 		self.driver.get(url)
-
 		wait_time = 1
 		while self.driver.title == "405":
 			# 当收到无效的405消息时，刷新页面
 			logging.debug("[ChromeDriver] : Got the invalid message 405, refreshing...")
-			self.driver.refresh()
 			sleep(wait_time)
+			self.driver.refresh()
 			wait_time *= 2  # 每次循环将等待时间增加一倍
 
 		# sleep(self.wait_complete_time)  # 等待网页完全加载通常需要最多8秒
 		self.save_cookies()
+		for i in range(10):
+			self.driver.execute_script(f'document.documentElement.scrollTop={(i + 1) * 1000}')
+			sleep(0.1)
 		html = self.driver.page_source
 		# logging.debug("[ChromeDriver] : Got the whole HTML: %s", html)
 		return html
@@ -208,6 +205,102 @@ def re_get_match_odds(match_ids: list, provider_ids=None, end: bool = True) -> l
 	return responses
 
 
+def re_get_lottery_num() -> str:
+	"""
+	爬虫爬取最新的lottery_num
+	Returns: 当期的lottery_num
+	"""
+	url = "https://www.okooo.com/I/?method=ok.news.info.getnotice&type=danchang"
+
+	# 读取 cookies
+	cookies = read_cookies()
+
+	# 使用列表推导式生成 cookie_str
+	cookie_str = "; ".join([f"{cookie['name']}={cookie['value']}" for cookie in cookies])
+
+	headers = {
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+		              'Chrome/58.0.3029.110 Safari/537.36',
+		'Cookie'    : cookie_str,
+	}
+
+	response = request("GET", url)
+	# 如果返回状态码为 405，则等待后重试
+	i = 1
+	while response.status_code != 200:
+		sleep(1 * i)
+		response = request("GET", url, headers = headers)
+		i += 1
+		if i == 10:
+			raise Exception('Unexpected response')
+
+	if response.status_code == 200:
+		# Get the title from the response
+		title = response.json()["info"][0]["title"]
+
+		# Use a regular expression to extract the number
+		match = re.search(r'第(\d+)期', title)
+
+		if match:
+			number = str(match.group(1))
+			return number
+		else:
+			raise Exception('No number found in the title.')
+
+
+def re_get_kelly_criterion(match_ids: list, LotteryNo: str, provider_indexes: list = None):
+	"""
+	拿到凯莉指数
+	Returns:
+	"""
+	if provider_indexes is None:
+		# 'get_kaili**' = 'id' + '0'
+		provider_indexes = ['0', '2', '3', '4', '5', '6']  # 0:99家平均, 2:威廉希尔, 3:立博, 4:bet365, 5:澳门彩票, 6:bwin
+
+	# index -> provider_ids
+	provider_map = { '0': 24, '2': 14, '4': 27, '5': 84 }
+
+	# 读取 cookies
+	cookies = read_cookies()
+
+	# 使用列表推导式生成 cookie_str
+	cookie_str = "; ".join([f"{cookie['name']}={cookie['value']}" for cookie in cookies])
+
+	headers = {
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+		              'Chrome/58.0.3029.110 Safari/537.36',
+		'Cookie'    : cookie_str,
+	}
+
+	responses = []
+	for index in provider_indexes:
+		url = f"https://www.okooo.com/ajax/?method=odds.sporttery.endodds&format=json&jsoncallback=get_kaili{index}0&LotteryNo={LotteryNo}&act=get_kaili&index={index}&LotteryType=WDL&v="
+
+		response = request("GET", url, headers = headers)
+		# 如果返回状态码为 405，则等待后重试
+		i = 1
+		while response.status_code == 405:
+			sleep(1 * i)
+			response = request("GET", url, headers = headers)
+			i += 1
+			if i == 10:
+				raise Exception('Unexpected response')
+
+		# 如果请求成功
+		if response.status_code == 200:
+			# json = { 'providerId': provider_id }
+			json = { }
+			# 根据 end 参数获取赔率数据
+			kelly_criterion = response.json()['sporttery_endodds_response']
+			json.update(kelly_criterion)  # 更新 json 对象
+			responses.append(json)
+			sleep(0.2)
+		else:
+			logging.error(f"response status code: {response.status_code}\ntext: {response.text}")
+
+	print(responses)
+
+
 def re_get_asian_handicaps(match_ids: list, provider_ids=None, end: bool = True) -> dict | None:
 	"""
 	使用 requests 查看亚盘赔率
@@ -271,8 +364,11 @@ def re_get_asian_handicaps(match_ids: list, provider_ids=None, end: bool = True)
 
 
 if __name__ == "__main__":
-	chrome = ChromeDriver()
-# print(chrome.get_html())
-# print(chrome.get_match_odds())
+	# chrome = ChromeDriver()
+	# print(chrome.get_html())
+	# print(chrome.get_match_odds())
+	print(re_get_lottery_num())
+
+	re_get_kelly_criterion([], re_get_lottery_num())
 
 # sql.save_initial_odds(re_get_match_odds(match_ids = [1179372], end = False))

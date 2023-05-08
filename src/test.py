@@ -1,9 +1,20 @@
-import sql
-import excel
-import web
+import pickle
+import classes
+import filter
 
-# selected_ids = excel.get_selected_ids()
-selected_ids = [1179371, 1179372]
-odds = web.re_get_match_odds(selected_ids)
-sql.save_odds(odds)
-# print(web.re_get_match_odds(selected_ids, end = False))
+
+def pickle_sample_match() -> classes.SoccerMatch:
+	init_match = filter.get_init_match_info(1171743)
+	with open("init_match.pkl", "wb") as file:
+		pickle.dump(init_match, file)
+	return init_match
+
+def read_sample_match() -> classes.SoccerMatch:
+	# Using pickle.load()
+	with open("init_match.pkl", "rb") as file:
+		init_match = pickle.load(file)
+	return init_match
+
+
+if __name__ == "__main__":
+	print(pickle_sample_match().__dict__)
