@@ -1,10 +1,12 @@
+import logging
 import os
+from typing import List
+
+import win32com.client
 from openpyxl import *
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
-import filter
-import test
-from classes import *
+import classes
 
 
 def set_header_style(cell):
@@ -76,92 +78,217 @@ def get_selected_ids(workbook_path="output.xlsx", sheet_name="场次列表"):
 	return selected_ids
 
 
-def read_templates() -> workbook.Workbook:
-	# 读取Excel文件
-	workbook = load_workbook('templates.xlsx')
-
-	# 选择首个Sheet
-	worksheet = workbook.active
-
-	# 寻找非空白单元格的最大行和列
-	max_row = worksheet.max_row
-	max_column = worksheet.max_column
-
-	print(max_row, max_column)
-
-
-def generate_fullfilled_workbook(match: SoccerMatch):
-	# 读取Excel文件
-	workbook = load_workbook('templates.xlsx')
-
-	# 选择首个Sheet
-	worksheet = workbook.active
-
-	# 寻找非空白单元格的最大行和列
-	max_row = worksheet.max_row
-	max_column = worksheet.max_column
-
-	# 比赛基本信息
-	worksheet.cell(row = 1, column = 1, value = f"{match.league} {match.match_time.split()[-1]}")
-	worksheet.cell(row = 1, column = 2, value = match.home_team)
-	worksheet.cell(row = 1, column = 6, value = match.away_team)
-
-	# 比赛初始赔率
-	for i, list in zip(range(2, 13), match.odds.values()):
-		# 判断initial值中是否存在match.odds中
-		if 'initial' in list:
-			for j, value in zip(range(2, 5), list['initial']):
-				worksheet.cell(row = i, column = j, value = value)
-	# 比赛即时赔率
-	for i, list in zip(range(2, 13), match.odds.values()):
-		# 判断initial值中是否存在match.odds中
-		if 'current' in list:
-			for j, value in zip(range(6, 9), list['current']):
-				worksheet.cell(row = i, column = j, value = value)
-	# 比赛即时凯利指数
-	for i, list in zip(range(2, 13), match.odds.values()):
-		# 判断initial值中是否存在match.odds中
-		if 'current_kelly' in list:
-			for j, value in zip(range(14, 17), list['current_kelly']):
+def fill_area(worksheet, row_range, column_range, match_data, data_key):
+	for i, list in zip(row_range, match_data.values()):
+		if data_key in list:
+			for j, value in zip(column_range, list[data_key]):
 				worksheet.cell(row = i, column = j, value = value)
 
-	# 比赛初始亚盘
-	for i, list in zip(range(2, 5), match.asian_handicaps.values()):
-		# 判断initial值中是否存在match.odds中
-		if 'initial' in list:
-			for j, value in zip(range(23, 26), list['initial']):
-				worksheet.cell(row = i, column = j, value = value)
-	# 比赛即时亚盘
-	for i, list in zip(range(5, 8), match.asian_handicaps.values()):
-		# 判断initial值中是否存在match.odds中
-		if 'current' in list:
-			for j, value in zip(range(23, 26), list['current']):
-				worksheet.cell(row = i, column = j, value = value)
 
-	# 比赛让球值
-	worksheet.cell(row = 1, column = 27, value = match.handicap)
-	# 比赛各个平台让球值
-	for i, list in zip(range(2, 5), match.handicap_odds.values()):
-		# 判断initial值中是否存在match.odds中
-		if 'initial' in list:
-			for j, value in zip(range(28, 31), list['initial']):
-				worksheet.cell(row = i, column = j, value = value)
+def merge_workbooks(filename='../output.xlsm'):
+	output_file_path = os.path.abspath(filename)
 
-	# 比赛盈亏值
-	for i, list in zip(range(9, 11), match.profit_loss.values()):
-		# 判断initial值中是否存在match.odds中
-		if 'initial' in list:
-			for j, value in zip(range(28, 31), list['initial']):
-				worksheet.cell(row = i, column = j, value = value)
+	# 执行CopySheet函数，该函数会将模板中的模板复制为比赛ID的Sheet
+	xls = win32com.client.Dispatch("Excel.Application")
+	wb = xls.Workbooks.Open(output_file_path)
+	xls.Run("MergeSheets")
+	wb.Save()
+	wb.Close()  # 关闭工作簿
+	xls.Quit()  # 退出 Excel 应用
 
-	# 比赛历史
-	for i, str in zip(range(2, 11, 2), match.match_history.values()):
-		worksheet.cell(row = i, column = 32, value = str)
 
-	# 保存操作
-	workbook.save(filename = "output.xlsx")
+def fill_in_workbook(match_list, filename='../output.xlsm'):
+	# 加载工作簿和工作表
+	workbook = load_workbook(filename = filename, data_only = False, keep_vba = True)
+
+	# 迭代比赛列表
+	for match in match_list:
+		worksheet = workbook[str(match.match_id)]
+		# 比赛基本信息
+		worksheet.cell(row = 1, column = 1, value = f"{match.league} {match.match_time.split()[-1]}")
+		worksheet.cell(row = 1, column = 2, value = match.home_team)
+		worksheet.cell(row = 1, column = 6, value = match.away_team)
+
+		# 开始遍历工作表中的A列
+		logging.info("开始遍历工作表中的公司名称")
+		for row in range(2, worksheet.max_row + 1):
+			# 读取A列的公司名称
+			company = worksheet.cell(row = row, column = 1).value
+			# 如果公司名称在 match.odds 字典中，则获取其对应的数据，否则赋值为 None
+			odds_info = match.odds.get(company) if company in match.odds else None
+			# 如果公司的赔率信息存在
+			if odds_info:
+				logging.info(f"在 {company} 的赔率信息中填入数据")
+				# 判断 'initial' 字段是否存在，并将其数据填入到 B、C、D 列
+				if 'initial' in odds_info:
+					worksheet.cell(row = row, column = 2).value = odds_info['initial'][0]
+					worksheet.cell(row = row, column = 3).value = odds_info['initial'][1]
+					worksheet.cell(row = row, column = 4).value = odds_info['initial'][2]
+				# 判断 'current' 字段是否存在，并将其数据填入到 F、G、H 列
+				if 'current' in odds_info:
+					worksheet.cell(row = row, column = 6).value = odds_info['current'][0]
+					worksheet.cell(row = row, column = 7).value = odds_info['current'][1]
+					worksheet.cell(row = row, column = 8).value = odds_info['current'][2]
+				# 判断 'updated' 字段是否存在，并将其数据填入到 J、K、L 列
+				if 'updated' in odds_info:
+					worksheet.cell(row = row, column = 10).value = odds_info['updated'][0]
+					worksheet.cell(row = row, column = 11).value = odds_info['updated'][1]
+					worksheet.cell(row = row, column = 12).value = odds_info['updated'][2]
+				# 判断 'current_kelly' 字段是否存在，并将其数据填入到 N、O、P 列
+				if 'current_kelly' in odds_info:
+					worksheet.cell(row = row, column = 14).value = odds_info['current_kelly'][0]
+					worksheet.cell(row = row, column = 15).value = odds_info['current_kelly'][1]
+					worksheet.cell(row = row, column = 16).value = odds_info['current_kelly'][2]
+				# 判断 'updated_kelly' 字段是否存在，并将其数据填入到 Q、R、S 列
+				if 'updated_kelly' in odds_info:
+					worksheet.cell(row = row, column = 17).value = odds_info['updated_kelly'][0]
+					worksheet.cell(row = row, column = 18).value = odds_info['updated_kelly'][1]
+					worksheet.cell(row = row, column = 19).value = odds_info['updated_kelly'][2]
+
+		# 所有数据填入完成，保存工作簿到文件
+		logging.info("赔率和凯利信息填入完成")
+
+		# 填入亚盘信息
+		logging.info("开始填入亚盘信息")
+		# 定义需要填充数据的公司列表
+		companies = ['澳门彩票', 'Interwetten', '金宝博']
+		# 按照'initial'、'current' 和 'updated' 的顺序，对每个公司进行操作
+		for i, company in enumerate(companies):
+			logging.info(f"开始处理 {company}的亚盘信息")
+			if company in match.asian_handicaps:
+				asian_handicaps_info = match.asian_handicaps.get(company)
+				if asian_handicaps_info:
+					# 填入 'initial' 数据
+					if 'initial' in asian_handicaps_info:
+						worksheet.cell(row = i + 2, column = 23, value = asian_handicaps_info['initial'][0])
+						worksheet.cell(row = i + 2, column = 24, value = asian_handicaps_info['initial'][1])
+						worksheet.cell(row = i + 2, column = 25, value = asian_handicaps_info['initial'][2])
+					# 填入 'current' 数据
+					if 'current' in asian_handicaps_info:
+						worksheet.cell(row = i + 5, column = 23, value = asian_handicaps_info['current'][0])
+						worksheet.cell(row = i + 5, column = 24, value = asian_handicaps_info['current'][1])
+						worksheet.cell(row = i + 5, column = 25, value = asian_handicaps_info['current'][2])
+					# 填入 'updated' 数据
+					if 'updated' in asian_handicaps_info:
+						worksheet.cell(row = i + 8, column = 23, value = asian_handicaps_info['updated'][0])
+						worksheet.cell(row = i + 8, column = 24, value = asian_handicaps_info['updated'][1])
+						worksheet.cell(row = i + 8, column = 25, value = asian_handicaps_info['updated'][2])
+			else:
+				logging.info(f"{company} 的亚盘信息不存在")
+
+		# 比赛让球值
+		worksheet.cell(row = 1, column = 27, value = match.handicap)
+
+		# 填入让球盘信息
+		logging.info("开始填入让球盘信息")
+		# 定义需要填充数据的公司列表
+		companies = ['竞彩官方', 'Interwetten', '金宝博']
+
+		# 按照公司列表的顺序，对每个公司进行操作
+		for i, company in enumerate(companies):
+			logging.info(f"开始处理 {company}")
+			if company in match.handicap_odds:
+				handicap_odds_info = match.handicap_odds.get(company)
+				if handicap_odds_info:
+					# 填入 'initial' 数据
+					if 'initial' in handicap_odds_info:
+						worksheet.cell(row = i + 2, column = 28, value = handicap_odds_info['initial'][0])
+						worksheet.cell(row = i + 2, column = 29, value = handicap_odds_info['initial'][1])
+						worksheet.cell(row = i + 2, column = 30, value = handicap_odds_info['initial'][2])
+					# 填入 'updated' 数据, 如果没有 'updated' 数据则填入 'current' 数据
+					if 'updated' in handicap_odds_info:
+						worksheet.cell(row = i + 5, column = 28, value = handicap_odds_info['updated'][0])
+						worksheet.cell(row = i + 5, column = 29, value = handicap_odds_info['updated'][1])
+						worksheet.cell(row = i + 5, column = 30, value = handicap_odds_info['updated'][2])
+					elif 'current' in handicap_odds_info:
+						worksheet.cell(row = i + 5, column = 28, value = handicap_odds_info['current'][0])
+						worksheet.cell(row = i + 5, column = 29, value = handicap_odds_info['current'][1])
+						worksheet.cell(row = i + 5, column = 30, value = handicap_odds_info['current'][2])
+				else:
+					logging.info(f"{company} 的让球指数信息不存在")
+			else:
+				logging.info(f"{company} 的让球指数信息不存在")
+
+		# 填入盈亏信息
+		logging.info("开始填入盈亏信息")
+		# 定义需要填充数据的公司列表
+		companies = ['必发', '竞彩']
+		# 按照'initial' 和 'updated' 的顺序，对每个公司进行操作
+		for i, company in enumerate(companies):
+			logging.info(f"开始处理 {company}")
+			if company in match.profit_loss:
+				profit_loss_info = match.profit_loss.get(company)
+				if profit_loss_info:
+					# 填入 'initial' 数据
+					if 'initial' in profit_loss_info:
+						worksheet.cell(row = i + 9, column = 28, value = profit_loss_info['initial'][0])
+						worksheet.cell(row = i + 9, column = 29, value = profit_loss_info['initial'][1])
+						worksheet.cell(row = i + 9, column = 30, value = profit_loss_info['initial'][2])
+					# 填入 'updated' 数据
+					if 'updated' in profit_loss_info:
+						worksheet.cell(row = i + 11, column = 28, value = profit_loss_info['updated'][0])
+						worksheet.cell(row = i + 11, column = 29, value = profit_loss_info['updated'][1])
+						worksheet.cell(row = i + 11, column = 30, value = profit_loss_info['updated'][2])
+			else:
+				logging.info(f"{company} 的盈亏信息不存在")
+
+		# 填入比赛历史信息
+		logging.info("开始填入比赛历史信息")
+		# 定义需要填充数据的键列表
+		keys = ['主队历史', '客队历史', '交战历史', '最后交战历史']
+		# 如果match.match_history存在，进行数据填充
+		if match.match_history:
+			# 按照键列表的顺序，对每个键进行操作
+			for i, key in zip(range(2, 11, 2), keys):
+				logging.info(f"开始处理 {key}")
+				if key in match.match_history:
+					worksheet.cell(row = i, column = 32, value = match.match_history[key])
+				else:
+					logging.info(f"{key} 的历史信息不存在")
+		else:
+			logging.info("比赛历史信息不存在")
+
+	workbook.save(filename = filename)
+
+
+def prepare_workbook(match_list,
+                     template_filename: str = '../template.xlsm',
+                     output_filename: str = '../output.xlsm'):
+	# 读取模板，复制为output.xlsm
+	import shutil
+	output_file_path = os.path.abspath(output_filename)
+	shutil.copy2(template_filename, output_filename)
+
+	# 执行CopySheet函数，该函数会将模板中的模板复制为比赛ID的Sheet
+	xls = win32com.client.Dispatch("Excel.Application")
+	wb = xls.Workbooks.Open(output_file_path)
+	for match in match_list:
+		xls.Run("CopySheet", str(match.match_id))
+	xls.Run("DeleteTemplate")
+	wb.Save()
+	wb.Close()  # 关闭工作簿
+	xls.Quit()  # 退出 Excel 应用
+
+
+def generate_merged_xlsm(matchlist: List[classes.SoccerMatch], template_filename='../template.xlsm',
+                         output_filename='../output.xlsm', open_file: bool = True):
+	"""
+	生成合并后的Excel文件
+	Args:
+		matchlist:
+		template_filename:
+		output_filename:
+
+	Returns:
+	"""
+	template_file_path = os.path.abspath(template_filename)
+	output_file_path = os.path.abspath(output_filename)
+	prepare_workbook(matchlist, template_filename = template_file_path, output_filename = output_file_path)
+	fill_in_workbook(matchlist, filename = output_file_path)
+	merge_workbooks(filename = output_file_path)
+	if open_file:
+		os.startfile(output_file_path)
 
 
 if __name__ == "__main__":
-	generate_fullfilled_workbook(test.read_sample_match())
-	os.startfile("output.xlsx")
+	pass

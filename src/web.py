@@ -1,13 +1,14 @@
 import json
 import logging
+import random
 import re
-from time import sleep, time
+from time import sleep
+
+from fake_useragent import UserAgent
 from requests import request, post
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
-import sql
 
 # logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
 
@@ -25,6 +26,7 @@ def read_cookies() -> list | None:
 	except (FileNotFoundError, json.JSONDecodeError, KeyError):
 		return None
 
+
 class ChromeDriver:
 	"""
 	ChromeDriver 类用于与 Chrome 浏览器进行交互，以获取和更新网页的 HTML 源代码。
@@ -32,8 +34,9 @@ class ChromeDriver:
 	driver = None
 	url = "https://www.okooo.cn/danchang/"
 	wait_complete_time = 6
+	chrome_options = webdriver.ChromeOptions()
 
-	def __init__(self):
+	def __init__(self, fake_ua=False):
 		"""
 		初始化 ChromeDriver 类，创建服务对象和浏览器对象。
 		"""
@@ -42,13 +45,19 @@ class ChromeDriver:
 		service.start()
 
 		# 创建浏览器对象
-		options = webdriver.ChromeOptions()
+		self.chrome_options = webdriver.ChromeOptions()
 		# options.add_argument('--headless')
-		options.binary_location = "../browser/chrome-win/chrome.exe"
-		# 无图模式，使用后兼容性出错
+		self.chrome_options.binary_location = "../browser/chrome-win/chrome.exe"
+
+		# 无图模式
 		prefs = { 'profile.managed_default_content_settings.images': 2 }
-		options.add_experimental_option('prefs', prefs)
-		self.driver = webdriver.Chrome(service = service, options = options)
+		self.chrome_options.add_experimental_option('prefs', prefs)
+
+		if fake_ua:
+			# 随机UA
+			ua = UserAgent()
+			self.chrome_options.add_argument(f'user-agent={ua.random}')
+		self.driver = webdriver.Chrome(options = self.chrome_options)
 
 	# if cookies is not None:
 	# 	self.driver.add_cookie(cookies)
@@ -65,7 +74,7 @@ class ChromeDriver:
 		with open('cookie.json', 'w') as f:
 			json.dump(cookie, f)
 
-	def get_html(self, url: str = url) -> str:
+	def get_html(self, url: str = url, wait_factor: int = random.randint(0, 5)) -> str:
 		"""
 		访问给定的 URL，并返回其 HTML 源代码。
 		Args:
@@ -75,6 +84,9 @@ class ChromeDriver:
 		"""
 		# 访问URL
 		self.driver.get(url)
+		logging.info("[ChromeDriver] : Visiting the URL: %s", url)
+		sleep(wait_factor)
+		logging.info("[ChromeDriver] : Waiting for the page to load...")
 		wait_time = 1
 		while self.driver.title == "405":
 			# 当收到无效的405消息时，刷新页面
@@ -86,8 +98,8 @@ class ChromeDriver:
 		# sleep(self.wait_complete_time)  # 等待网页完全加载通常需要最多8秒
 		self.save_cookies()
 		for i in range(10):
-			self.driver.execute_script(f'document.documentElement.scrollTop={(i + 1) * 1000}')
-			sleep(0.1)
+			self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+			sleep(0.5)
 		html = self.driver.page_source
 		# logging.debug("[ChromeDriver] : Got the whole HTML: %s", html)
 		return html
@@ -111,29 +123,6 @@ class ChromeDriver:
 
 		# logging.debug("[ChromeDriver] : Got the whole HTML: %s", html)
 		return html
-
-	# def get_match_odds(self, provider_ids: list = [27],
-	#                    match_ids: list = [1206413, 1206406], end: bool = True) -> json:
-	# 	"""
-	# 	获取比赛赔率信息。
-	# 	Args:
-	# 	    provider_ids (list): 提供者 ID 列表。
-	# 	    match_ids (list): 比赛 ID 列表。
-	# 	    end (bool): 是否为结束赔率。
-	# 	Returns:
-	# 	    json: 包含比赛赔率信息的 JSON 对象。
-	# 	"""
-	# 	url = "https://www.okooo.cn/ajax/?method=data.match.endodds" \
-	# 		if end else "https://www.okooo.cn/ajax/?method=data.match.odds"
-	# 	url += f"&bettingTypeId=1"  # 1 赔率 | 2 亚盘
-	# 	url += "&matchIds="
-	# 	for id in match_ids:
-	# 		url += f"{id},"
-	# 	url.rstrip(',')
-	# 	for id in provider_ids:
-	# 		temp_url = url + f"&providerId={id}"
-	# 		print(temp_url)
-	# 		print(self.get_html(temp_url))
 
 	def close(self) -> None:
 		"""
@@ -370,5 +359,3 @@ if __name__ == "__main__":
 	print(re_get_lottery_num())
 
 	re_get_kelly_criterion([], re_get_lottery_num())
-
-# sql.save_initial_odds(re_get_match_odds(match_ids = [1179372], end = False))
