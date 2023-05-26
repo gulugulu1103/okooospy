@@ -1,4 +1,5 @@
 import logging
+import random
 import re
 
 from bs4 import BeautifulSoup
@@ -51,11 +52,11 @@ def get_match_list_info(chrome: ChromeDriver) -> List[Tuple[str, str, str, str, 
 	return match_list
 
 
-def get_init_match_info(match_id: str, chrome: ChromeDriver) -> SoccerMatch:
+def get_init_match_info(match_id: str, chrome: ChromeDriver, wait_time = random.randint(1, 3)) -> SoccerMatch:
 	logging.info(f"开始获取比赛 {match_id} 的初始信息")
 
 	match_odd_url = f"https://www.okooo.com/soccer/match/{match_id}/odds/"
-	match_odd_html = chrome.get_html(match_odd_url)
+	match_odd_html = chrome.get_html(match_odd_url, wait_time = wait_time)
 	soup = BeautifulSoup(match_odd_html, 'html.parser')
 
 	match: SoccerMatch = SoccerMatch()

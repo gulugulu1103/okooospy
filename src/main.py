@@ -77,11 +77,11 @@ class App:
 		self.update_button = tk.Button(self.root, text = '更新', command = self.update_excel)
 		self.update_button.grid(row = 1, column = 2, sticky = 'ew')
 
-		# # Adding a label and entry (input box) for setting wait time
-		# self.wait_time_label = tk.Label(self.root, text = '等待时间: ')
-		# self.wait_time_label.grid(row = 2, column = 0, sticky = 'ew')
-		# self.wait_time_entry = tk.Entry(self.root)
-		# self.wait_time_entry.grid(row = 2, column = 1, columnspan = 2, sticky = 'ew')
+		# Adding a label and entry (input box) for setting wait time
+		self.wait_time_label = tk.Label(self.root, text = '等待时间: ')
+		self.wait_time_label.grid(row = 2, column = 0, sticky = 'ew')
+		self.wait_time_entry = tk.Entry(self.root)
+		self.wait_time_entry.grid(row = 2, column = 1, columnspan = 2, sticky = 'ew')
 
 	def sort_column(self, col, reverse):
 		match_data = [(self.tree.set(child, col), child) for child in self.tree.get_children('')]

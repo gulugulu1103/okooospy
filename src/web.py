@@ -74,7 +74,7 @@ class ChromeDriver:
 		with open('cookie.json', 'w') as f:
 			json.dump(cookie, f)
 
-	def get_html(self, url: str = url, wait_factor: int = random.randint(0, 5)) -> str:
+	def get_html(self, url: str = url, wait_time: int = random.randint(0, 5), scroll_times = random.randint(3, 5)) -> str:
 		"""
 		访问给定的 URL，并返回其 HTML 源代码。
 		Args:
@@ -83,23 +83,27 @@ class ChromeDriver:
 		    str: 网页的 HTML 源代码。
 		"""
 		# 访问URL
+		sleep(wait_time)
+		logging.info("[ChromeDriver] : Waiting for %d seconds...", wait_time)
 		self.driver.get(url)
 		logging.info("[ChromeDriver] : Visiting the URL: %s", url)
-		sleep(wait_factor)
+		sleep(wait_time)
+		logging.info("[ChromeDriver] : Waiting for %d seconds...", wait_time)
+		# 等待网页加载
 		logging.info("[ChromeDriver] : Waiting for the page to load...")
-		wait_time = 1
 		while self.driver.title == "405":
 			# 当收到无效的405消息时，刷新页面
 			logging.debug("[ChromeDriver] : Got the invalid message 405, refreshing...")
 			sleep(wait_time)
 			self.driver.refresh()
 			wait_time *= 2  # 每次循环将等待时间增加一倍
+			logging.info("[ChromeDriver] : Waiting for %d seconds...", wait_time)
 
 		# sleep(self.wait_complete_time)  # 等待网页完全加载通常需要最多8秒
 		self.save_cookies()
-		for i in range(10):
+		for i in range(scroll_times):
 			self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-			sleep(0.5)
+			sleep(random.randint(1, 3))
 		html = self.driver.page_source
 		# logging.debug("[ChromeDriver] : Got the whole HTML: %s", html)
 		return html

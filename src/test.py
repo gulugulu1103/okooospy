@@ -1,6 +1,7 @@
 import pickle
 
 import excel
+import web
 from classes import *
 import filter
 
@@ -40,6 +41,6 @@ def read_match(match_id) -> SoccerMatch:
 
 if __name__ == "__main__":
 	list = [1171214, 1201824, 1214443, 1214449, 1215087]
-	matches = [read_match(x) for x in list]
-	excel.generate_merged_xlsm(matches, open_file = True)
+	r = web.re_get_match_odds(list)
+	print(r)
 
